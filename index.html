@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>暗記帳</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#ffffff; --panel:#fafafa; --line:#e6e6e6; --ink:#1c1c1c; --sub:#6b6b6b;
+  --accent:#3c6e5c; --accent-soft:#e7f0ec; --danger:#a8443a;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Noto Sans JP",sans-serif;background:var(--bg);color:var(--ink)}
+.app{display:flex;min-height:100vh}
+.sidebar{width:210px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);
+  padding:24px 12px;display:flex;flex-direction:column;gap:4px}
+.brand{font-weight:700;font-size:18px;padding:0 10px 20px;letter-spacing:.02em}
+.navbtn{display:flex;align-items:center;gap:10px;padding:11px 12px;border:none;background:none;
+  border-radius:8px;text-align:left;font-size:14.5px;color:var(--ink)}
+.navbtn:hover{background:var(--accent-soft)}
+.navbtn.active{background:var(--accent);color:#fff}
+.main{flex:1;padding:32px 40px;max-width:920px;overflow-x:auto}
+h1{font-size:22px;margin:0 0 4px}
+.lead{color:var(--sub);font-size:14px;margin:0 0 28px}
+.view{display:none}
+.view.active{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:16px}
+.card h3{margin:0 0 6px;font-size:15px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:7px;font-size:14px}
+.btn:hover{opacity:.9}
+.btn.secondary{background:none;border:1px solid var(--line);color:var(--ink)}
+.btn.danger{background:none;color:var(--danger);border:1px solid var(--danger)}
+.progressbar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:8px 0}
+.progressbar>div{height:100%;background:var(--accent)}
+label{font-size:13px;color:var(--sub);display:block;margin:12px 0 4px}
+input[type=text],input[type=number],input[type=password],textarea,select{width:100%;padding:8px 10px;border:1px solid var(--line);
+  border-radius:7px;font-size:14px;font-family:inherit;background:#fff}
+textarea{min-height:110px;resize:vertical}
+.tplgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px 0 4px}
+.tpl{border:1px solid var(--line);border-radius:9px;padding:14px;text-align:left;background:#fff;font-size:13.5px}
+.tpl.selected{border-color:var(--accent);background:var(--accent-soft)}
+.tpl b{display:block;margin-bottom:4px;font-size:14px}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+.toggle:last-child{border-bottom:none}
+.switch{position:relative;width:38px;height:22px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--line);border-radius:22px;transition:.15s}
+.slider:before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+input:checked+.slider{background:var(--accent)}
+input:checked+.slider:before{transform:translateX(16px)}
+.chip{display:inline-block;padding:3px 9px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-size:12px;margin-left:6px}
+.empty{color:var(--sub);font-size:13.5px;padding:20px;text-align:center;border:1px dashed var(--line);border-radius:10px}
+.quiz-choice{display:block;width:100%;text-align:left;padding:12px 14px;margin-bottom:8px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;font-size:15px;position:relative}
+.quiz-choice:hover{border-color:var(--accent)}
+.quiz-choice.correct{border-color:var(--accent);background:var(--accent-soft)}
+.quiz-choice.wrong{border-color:var(--danger);background:#fbeceb}
+.kbd{font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:8px}
+.keyrow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.keybtn{border:1px solid var(--line);background:#fff;padding:6px 14px;border-radius:6px;font-size:13px;min-width:70px}
+.keybtn.listening{border-color:var(--accent);color:var(--accent)}
+.aibox{background:var(--accent-soft);border:1px solid var(--accent);border-radius:9px;padding:14px;margin-top:10px}
+.small{font-size:12.5px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="brand">暗記帳</div>
+    <button class="navbtn" data-view="home">ホーム</button>
+    <button class="navbtn" data-view="create">新規作成</button>
+    <button class="navbtn" data-view="list">テスト一覧</button>
+    <button class="navbtn" data-view="shop">テストショップ</button>
+    <button class="navbtn" data-view="settings">設定</button>
+    <div style="flex:1"></div>
+    <div id="authArea" style="padding:10px 10px 0;border-top:1px solid var(--line)"></div>
+  </div>
+  <div class="main">
+
+    <div class="view" id="view-home">
+      <h1>ホーム</h1>
+      <p class="lead">保存されたテストの進捗です。続きから再開できます。</p>
+      <div id="homeList"></div>
+    </div>
+
+    <div class="view" id="view-create">
+      <h1>新規作成</h1>
+      <p class="lead">テンプレートを選び、ソースを追加して、テストを作りましょう。</p>
+
+      <div class="card">
+        <h3>1. テンプレート</h3>
+        <div class="tplgrid" id="tplGrid"></div>
+      </div>
+
+      <div class="card">
+        <h3>2. ソース</h3>
+        <label>単語と意味（1行に「単語,意味」の形式で入力、テキストファイル・画像・動画も読み込み可）</label>
+        <textarea id="sourceText" placeholder="apple,りんご&#10;run,走る"></textarea>
+        <input type="file" id="sourceFile" accept=".txt,.csv,image/*,video/*" style="margin-top:8px">
+        <div id="mediaPreview"></div>
+        <button class="btn secondary" id="extractMediaBtn" style="display:none;margin-top:8px">画像・動画から単語を抽出する</button>
+        <p class="small" id="fileNote"></p>
+
+        <div class="aibox">
+          <b>AIにおまかせ</b>
+          <p class="small">元のテキスト（または画像・動画）とやりたいことをAIに伝えると、単語リストや問題の作り方を調整できます。利用にはAnthropic APIキーが必要です（設定画面で登録）。</p>
+          <textarea id="aiRequest" placeholder="例：この文章から重要な単語を15個選んで、意味も簡単な日本語にして"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" id="aiRunBtn">テキストからAIに依頼する</button>
+            <span class="small" id="aiStatus"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>3. テスト設定</h3>
+        <label>テスト名</label>
+        <input type="text" id="testName" placeholder="例：英単語 第1章">
+        <div class="row" style="margin-top:10px">
+          <div style="flex:1;min-width:140px">
+            <label>難易度</label>
+            <select id="difficulty"><option value="easy">やさしい</option><option value="normal" selected>ふつう</option><option value="hard">むずかしい</option></select>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label>問題数</label>
+            <input type="number" id="qCount" value="10" min="1">
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label>選択肢の数</label>
+            <input type="number" id="cCount" value="4" min="2" max="6">
+          </div>
+        </div>
+        <div class="toggle"><span>シャッフルする</span><label class="switch"><input type="checkbox" id="optShuffle" checked><span class="slider"></span></label></div>
+        <div class="toggle"><span>タイマーを表示する</span><label class="switch"><input type="checkbox" id="optTimer"><span class="slider"></span></label></div>
+        <div class="toggle"><span>間違えた問題をあとで復習に出す</span><label class="switch"><input type="checkbox" id="optRetry" checked><span class="slider"></span></label></div>
+        <div class="row" style="margin-top:14px"><button class="btn" id="createTestBtn">テストを作成</button></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-list">
+      <h1>テスト一覧</h1>
+      <p class="lead">作成したテストの一覧です。</p>
+      <div id="listArea"></div>
+    </div>
+
+    <div class="view" id="view-shop">
+      <h1>テストショップ</h1>
+      <p class="lead">用意されたテンプレートをすぐに追加できます。</p>
+      <div id="shopArea" class="tplgrid"></div>
+    </div>
+
+    <div class="view" id="view-settings">
+      <h1>設定</h1>
+      <p class="lead">キーコンフィグとAI機能の設定です。</p>
+
+      <div class="card">
+        <h3>Googleアカウントでログイン（データの同期）</h3>
+        <p class="small">Googleでログインすると、テストや進捗データがユーザーごとに保存され、他の端末からも自分のデータだけを見られるようになります。ログインしない場合は、この端末のブラウザだけにデータが保存されます（ゲストモード）。<br>この機能には無料のFirebaseプロジェクト（Googleが提供するサービス）の設定が必要です。設定方法は下のガイドをご覧ください。</p>
+        <label>Firebase設定（プロジェクトの firebaseConfig をそのまま貼り付け）</label>
+        <textarea id="firebaseConfigInput" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="saveFirebaseBtn">Firebase設定を保存</button>
+          <span class="small" id="firebaseStatus"></span>
+        </div>
+        <div class="row" style="margin-top:12px" id="loginRow"></div>
+      </div>
+
+      <div class="card">
+        <h3>AI機能の設定</h3>
+        <p class="small">画像・動画からの自動読み取りや「AIにおまかせ」機能は、ご自身のAnthropic APIキーを使ってブラウザから直接APIを呼び出します。キーはこの端末のブラウザ内（localStorage）にのみ保存され、Anthropic以外には送信されません。利用料金はご自身のAPIキーの契約に基づき発生します。このサイトはクラウド上のどこにホストしても動作します。</p>
+        <label>Anthropic APIキー</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+        <div class="row" style="margin-top:8px"><button class="btn" id="saveKeyBtn">保存</button><button class="btn secondary" id="clearKeyBtn">削除</button><span class="small" id="keyStatus"></span></div>
+      </div>
+
+      <div class="card" id="keyConfigArea"></div>
+    </div>
+
+    <div class="view" id="view-quiz">
+      <div class="row" style="justify-content:space-between">
+        <h1 id="quizTitle">テスト</h1>
+        <button class="btn secondary" id="quizExitBtn">中断してホームへ</button>
+      </div>
+      <div class="progressbar"><div id="quizProgressBar" style="width:0%"></div></div>
+      <p class="small" id="quizProgressText"></p>
+      <div class="card" id="quizCard"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const LS_TESTS='vocabApp_tests', LS_KEYS='vocabApp_keyConfig', LS_APIKEY='vocabApp_apiKey';
+const TEMPLATES=[
+  {id:'flash',name:'単語カード',desc:'単語→意味を順にめくる'},
+  {id:'choice',name:'4択クイズ',desc:'意味を選ぶ多肢選択'},
+  {id:'type',name:'タイピング',desc:'意味を見て単語を入力'},
+  {id:'reverse',name:'逆引きクイズ',desc:'意味→単語を選ぶ'},
+];
+const SHOP_ITEMS=[
+  {name:'中学英単語 基礎600',template:'choice',words:[['book','本'],['study','勉強する'],['friend','友達'],['school','学校'],['happy','幸せな']]},
+  {name:'TOEIC頻出単語',template:'flash',words:[['strategy','戦略'],['invoice','請求書'],['candidate','候補者'],['deadline','締切'],['revenue','収益']]},
+  {name:'常用漢字 読み方',template:'type',words:[['憂鬱','ゆううつ'],['曖昧','あいまい'],['流暢','りゅうちょう']]},
+];
+let state={tests:JSON.parse(localStorage.getItem(LS_TESTS)||'[]'),
+  keys:JSON.parse(localStorage.getItem(LS_KEYS)||'null')||{c1:'1',c2:'2',c3:'3',c4:'4',c5:'5',c6:'6',next:'Enter'}};
+let selectedTpl='flash', currentQuiz=null, mediaBase64=null, mediaMime=null;
+const LS_FBCONFIG='vocabApp_firebaseConfig';
+let fbAuth=null, fbDb=null, currentUser=null, cloudLoaded=false;
+
+function save(){
+  if(currentUser && fbDb){
+    fbDb.collection('users').doc(currentUser.uid).set({tests:state.tests,keys:state.keys}).catch(e=>console.error('sync error',e));
+  } else {
+    localStorage.setItem(LS_TESTS,JSON.stringify(state.tests));
+    localStorage.setItem(LS_KEYS,JSON.stringify(state.keys));
+  }
+}
+function uid(){return 't'+Date.now()+Math.random().toString(36).slice(2,6);}
+
+function renderAuthUI(){
+  const area=$('#authArea'), row=$('#loginRow');
+  if(!fbAuth){
+    area.innerHTML='<p class="small">ゲストモード（この端末のみに保存）</p>';
+    if(row) row.innerHTML='<p class="small">Firebase設定を保存するとログインボタンが表示されます。</p>';
+    return;
+  }
+  if(currentUser){
+    area.innerHTML=`<p class="small">${currentUser.displayName||currentUser.email} でログイン中</p><button class="btn secondary" id="logoutBtn" style="width:100%">ログアウト</button>`;
+    $('#logoutBtn').onclick=()=>fbAuth.signOut();
+    if(row) row.innerHTML=`<p class="small">${currentUser.email} でログイン中です。</p><button class="btn secondary" id="logoutBtn2">ログアウト</button>`;
+    $('#logoutBtn2')&&($('#logoutBtn2').onclick=()=>fbAuth.signOut());
+  } else {
+    area.innerHTML='<p class="small">ゲストモード</p><button class="btn" id="loginBtn" style="width:100%">Googleでログイン</button>';
+    $('#loginBtn').onclick=doGoogleLogin;
+    if(row) row.innerHTML='<button class="btn" id="loginBtn2">Googleでログイン</button>';
+    $('#loginBtn2')&&($('#loginBtn2').onclick=doGoogleLogin);
+  }
+}
+function doGoogleLogin(){
+  fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e=>alert('ログインエラー: '+e.message));
+}
+function initFirebase(config){
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(config); 
+    fbAuth=firebase.auth(); fbDb=firebase.firestore();
+    fbAuth.onAuthStateChanged(async user=>{
+      currentUser=user;
+      if(user){
+        const ref=fbDb.collection('users').doc(user.uid);
+        const snap=await ref.get();
+        if(snap.exists){ const d=snap.data(); state.tests=d.tests||[]; state.keys=d.keys||state.keys; }
+        else{ await ref.set({tests:state.tests,keys:state.keys}); }
+        cloudLoaded=true;
+      } else {
+        state.tests=JSON.parse(localStorage.getItem(LS_TESTS)||'[]');
+        state.keys=JSON.parse(localStorage.getItem(LS_KEYS)||'null')||state.keys;
+      }
+      renderAuthUI(); render();
+    });
+    $('#firebaseStatus').textContent='Firebaseに接続しました。';
+  }catch(e){ $('#firebaseStatus').textContent='設定エラー: '+e.message; }
+}
+$('#saveFirebaseBtn').onclick=()=>{
+  const raw=$('#firebaseConfigInput').value.trim();
+  if(!raw){$('#firebaseStatus').textContent='設定を入力してください。';return;}
+  try{
+    const config=new Function('return ('+raw+')')();
+    localStorage.setItem(LS_FBCONFIG,JSON.stringify(config));
+    initFirebase(config);
+  }catch(e){ $('#firebaseStatus').textContent='貼り付けた内容を解析できませんでした。'; }
+};
+(function bootFirebase(){
+  const saved=localStorage.getItem(LS_FBCONFIG);
+  if(saved){
+    try{ const config=JSON.parse(saved); $('#firebaseConfigInput').value=JSON.stringify(config,null,2); initFirebase(config); }
+    catch(e){}
+  } else { renderAuthUI(); }
+})();
+
+function showView(v){
+  $$('.view').forEach(e=>e.classList.remove('active'));
+  $('#view-'+v)?.classList.add('active');
+  $$('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+}
+$$('.navbtn').forEach(b=>b.onclick=()=>{render();showView(b.dataset.view);});
+
+function renderTemplates(){
+  $('#tplGrid').innerHTML=TEMPLATES.map(t=>`<button class="tpl ${t.id===selectedTpl?'selected':''}" data-t="${t.id}"><b>${t.name}</b>${t.desc}</button>`).join('');
+  $$('#tplGrid .tpl').forEach(b=>b.onclick=()=>{selectedTpl=b.dataset.t;renderTemplates();});
+}
+
+// ---- API key ----
+$('#apiKeyInput').value=localStorage.getItem(LS_APIKEY)||'';
+$('#saveKeyBtn').onclick=()=>{localStorage.setItem(LS_APIKEY,$('#apiKeyInput').value.trim());$('#keyStatus').textContent='保存しました。';};
+$('#clearKeyBtn').onclick=()=>{localStorage.removeItem(LS_APIKEY);$('#apiKeyInput').value='';$('#keyStatus').textContent='削除しました。';};
+
+async function callClaude(messages){
+  const key=localStorage.getItem(LS_APIKEY);
+  if(!key) throw {message:'設定画面でAnthropic APIキーを登録してください。'};
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,messages})
+  });
+  if(!res.ok){ let t=''; try{t=(await res.json()).error?.message}catch(e){} throw {message:t||('APIエラー ('+res.status+')')}; }
+  const data=await res.json();
+  return data.content.map(c=>c.text||'').join('\n');
+}
+function extractJsonArray(text){
+  const m=text.match(/\[[\s\S]*\]/);
+  if(!m) return null;
+  try{return JSON.parse(m[0]);}catch(e){return null;}
+}
+
+// ---- source file handling (text / image / video) ----
+$('#sourceFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  mediaBase64=null; mediaMime=null; $('#extractMediaBtn').style.display='none'; $('#mediaPreview').innerHTML=''; $('#fileNote').textContent='';
+  if(f.type.startsWith('image/')){
+    const r=new FileReader();
+    r.onload=()=>{
+      mediaBase64=r.result.split(',')[1]; mediaMime=f.type;
+      $('#mediaPreview').innerHTML=`<img src="${r.result}" style="max-width:220px;border-radius:8px;margin-top:8px">`;
+      $('#extractMediaBtn').style.display='inline-block';
+    };
+    r.readAsDataURL(f);
+  } else if(f.type.startsWith('video/')){
+    const url=URL.createObjectURL(f);
+    const video=document.createElement('video'); video.src=url; video.muted=true; video.playsInline=true;
+    video.addEventListener('loadeddata',()=>{ video.currentTime=Math.min(1,(video.duration||2)/2); });
+    video.addEventListener('seeked',()=>{
+      const canvas=document.createElement('canvas'); canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      canvas.getContext('2d').drawImage(video,0,0);
+      const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+      mediaBase64=dataUrl.split(',')[1]; mediaMime='image/jpeg';
+      $('#mediaPreview').innerHTML=`<img src="${dataUrl}" style="max-width:220px;border-radius:8px;margin-top:8px"><p class="small">動画から1フレームを抽出しました（複数フレームの解析には対応していません）</p>`;
+      $('#extractMediaBtn').style.display='inline-block';
+    });
+  } else {
+    const r=new FileReader();
+    r.onload=()=>{$('#sourceText').value=r.result;$('#fileNote').textContent=f.name+' を読み込みました。'};
+    r.readAsText(f);
+  }
+});
+
+$('#extractMediaBtn').onclick=async()=>{
+  const status=$('#aiStatus'); status.textContent='画像を解析中…';
+  try{
+    const req=$('#aiRequest').value.trim();
+    const prompt=`画像から、単語暗記アプリ用の「単語」と「意味」のペアを抽出してください。要望: ${req||'(特になし。画像内の文字や内容から自然に単語と意味を抽出してください)'}\n\n出力はJSON配列のみとし、他の文章は含めないでください。形式: [{"term":"単語","meaning":"意味"}, ...]`;
+    const out=await callClaude([{role:'user',content:[
+      {type:'image',source:{type:'base64',media_type:mediaMime,data:mediaBase64}},
+      {type:'text',text:prompt}
+    ]}]);
+    const arr=extractJsonArray(out);
+    if(arr && arr.length){ $('#sourceText').value=arr.map(r=>`${r.term},${r.meaning}`).join('\n'); status.textContent=`${arr.length}件の単語を抽出しました。`; }
+    else status.textContent='抽出結果を読み取れませんでした。もう一度お試しください。';
+  }catch(err){ status.textContent='エラー: '+(err.message||'不明なエラー'); }
+};
+
+$('#aiRunBtn').onclick=async()=>{
+  const status=$('#aiStatus'); status.textContent='考え中…';
+  try{
+    const src=$('#sourceText').value.trim();
+    const req=$('#aiRequest').value.trim();
+    const prompt=`あなたは単語暗記アプリの作成支援AIです。以下のソースと要望から、単語と意味のペアをJSON配列で出力してください。出力はJSON配列のみで、他のテキストは含めないでください。形式: [{"term":"単語","meaning":"意味"}, ...]\n\nソース:\n${src||'(なし)'}\n\n要望:\n${req||'(特になし。ソースから自然に単語と意味を抽出してください)'}`;
+    const out=await callClaude([{role:'user',content:prompt}]);
+    const arr=extractJsonArray(out);
+    if(arr && arr.length){ $('#sourceText').value=arr.map(r=>`${r.term},${r.meaning}`).join('\n'); status.textContent=`${arr.length}件の単語をAIが生成しました。`; }
+    else status.textContent='生成結果を読み取れませんでした。もう一度お試しください。';
+  }catch(err){ status.textContent='エラー: '+(err.message||'不明なエラー'); }
+};
+
+$('#createTestBtn').onclick=()=>{
+  const words=parseSource($('#sourceText').value);
+  const name=$('#testName').value.trim()||'名称未設定テスト';
+  if(!words.length){alert('単語データがありません。ソースを入力してください。');return;}
+  const test={id:uid(),name,template:selectedTpl,words,
+    settings:{difficulty:$('#difficulty').value,qCount:Math.max(1,+$('#qCount').value||10),
+      cCount:Math.max(2,+$('#cCount').value||4),shuffle:$('#optShuffle').checked,
+      timer:$('#optTimer').checked,retry:$('#optRetry').checked},
+    progress:{index:0,correct:0,incorrect:0,completed:false,order:null}};
+  state.tests.unshift(test); save();
+  $('#testName').value='';$('#sourceText').value='';$('#aiRequest').value='';$('#aiStatus').textContent='';
+  $('#mediaPreview').innerHTML='';$('#extractMediaBtn').style.display='none';$('#sourceFile').value='';
+  render(); showView('list');
+};
+function parseSource(text){
+  return text.split('\n').map(l=>l.split(',')).filter(p=>p.length>=2 && p[0].trim())
+    .map(p=>({term:p[0].trim(),meaning:p.slice(1).join(',').trim()}));
+}
+
+function renderHome(){
+  const active=state.tests.filter(t=>t.progress.index>0 && !t.progress.completed);
+  if(!active.length){$('#homeList').innerHTML='<div class="empty">進行中のテストはありません。「新規作成」から始めましょう。</div>';return;}
+  $('#homeList').innerHTML=active.map(t=>{
+    const pct=Math.round(100*t.progress.index/t.words.length);
+    return `<div class="card"><div class="row" style="justify-content:space-between"><h3>${t.name}<span class="chip">${TEMPLATES.find(x=>x.id===t.template)?.name||''}</span></h3><button class="btn" data-resume="${t.id}">再開する</button></div>
+    <div class="progressbar"><div style="width:${pct}%"></div></div><p class="small">${t.progress.index} / ${t.words.length} 問（正解 ${t.progress.correct}）</p></div>`;
+  }).join('');
+  $$('[data-resume]').forEach(b=>b.onclick=()=>startQuiz(b.dataset.resume));
+}
+
+function renderList(){
+  if(!state.tests.length){$('#listArea').innerHTML='<div class="empty">まだテストがありません。</div>';return;}
+  $('#listArea').innerHTML=state.tests.map(t=>`<div class="card"><div class="row" style="justify-content:space-between">
+    <h3>${t.name}<span class="chip">${TEMPLATES.find(x=>x.id===t.template)?.name||''}</span></h3>
+    <div class="row"><button class="btn" data-start="${t.id}">開始</button><button class="btn secondary" data-reset="${t.id}">進捗リセット</button><button class="btn danger" data-del="${t.id}">削除</button></div></div>
+    <p class="small">${t.words.length}語・難易度:${({easy:'やさしい',normal:'ふつう',hard:'むずかしい'})[t.settings.difficulty]}・進捗 ${t.progress.index}/${t.words.length}</p></div>`).join('');
+  $$('[data-start]').forEach(b=>b.onclick=()=>startQuiz(b.dataset.start));
+  $$('[data-del]').forEach(b=>b.onclick=()=>{if(confirm('削除しますか？')){state.tests=state.tests.filter(t=>t.id!==b.dataset.del);save();render();}});
+  $$('[data-reset]').forEach(b=>b.onclick=()=>{const t=state.tests.find(t=>t.id===b.dataset.reset);t.progress={index:0,correct:0,incorrect:0,completed:false,order:null};save();render();});
+}
+
+function renderShop(){
+  $('#shopArea').innerHTML=SHOP_ITEMS.map((s,i)=>`<div class="tpl"><b>${s.name}</b>${s.words.length}語・${TEMPLATES.find(x=>x.id===s.template)?.name}
+    <div style="margin-top:8px"><button class="btn" data-shop="${i}">追加する</button></div></div>`).join('');
+  $$('[data-shop]').forEach(b=>b.onclick=()=>{
+    const s=SHOP_ITEMS[b.dataset.shop];
+    state.tests.unshift({id:uid(),name:s.name,template:s.template,words:s.words.map(w=>({term:w[0],meaning:w[1]})),
+      settings:{difficulty:'normal',qCount:s.words.length,cCount:4,shuffle:true,timer:false,retry:true},
+      progress:{index:0,correct:0,incorrect:0,completed:false,order:null}});
+    save(); alert(s.name+' をテスト一覧に追加しました。'); render(); showView('list');
+  });
+}
+
+function renderKeyConfig(){
+  const labels={c1:'選択肢1',c2:'選択肢2',c3:'選択肢3',c4:'選択肢4',c5:'選択肢5',c6:'選択肢6',next:'次へ進む'};
+  $('#keyConfigArea').innerHTML='<h3>キーコンフィグ</h3><p class="small">クイズ中の選択肢をキーボードで操作できます。ボタンを押してキーを設定してください。</p>'+
+    Object.keys(labels).map(k=>`<div class="keyrow"><span>${labels[k]}</span><button class="keybtn" data-key="${k}">${state.keys[k]}</button></div>`).join('');
+  $$('#keyConfigArea [data-key]').forEach(b=>b.onclick=()=>{
+    b.textContent='キーを押してください'; b.classList.add('listening');
+    const handler=e=>{e.preventDefault(); state.keys[b.dataset.key]=e.key; b.textContent=e.key; b.classList.remove('listening'); save(); document.removeEventListener('keydown',handler,true);};
+    document.addEventListener('keydown',handler,true);
+  });
+}
+
+function startQuiz(id){
+  const test=state.tests.find(t=>t.id===id); if(!test)return;
+  if(!test.progress.order){
+    let order=test.words.map((_,i)=>i);
+    if(test.settings.shuffle){for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}}
+    test.progress.order=order.slice(0,Math.min(test.settings.qCount,order.length));
+  }
+  currentQuiz={test}; save(); showView('quiz'); renderQuizQuestion();
+}
+
+function renderQuizQuestion(){
+  const {test}=currentQuiz;
+  const {index,order}=test.progress;
+  $('#quizTitle').textContent=test.name;
+  if(index>=order.length){
+    test.progress.completed=true; save();
+    $('#quizCard').innerHTML=`<h3>お疲れさまでした！</h3><p>正解 ${test.progress.correct} / ${order.length}</p>
+      <div class="row" style="margin-top:10px"><button class="btn" id="backHomeBtn">ホームへ戻る</button></div>`;
+    $('#quizProgressBar').style.width='100%'; $('#quizProgressText').textContent='完了';
+    $('#backHomeBtn').onclick=()=>{render();showView('home');};
+    return;
+  }
+  $('#quizProgressBar').style.width=(100*index/order.length)+'%';
+  $('#quizProgressText').textContent=`${index+1} / ${order.length} 問・正解 ${test.progress.correct}`;
+  const wordIdx=order[index]; const word=test.words[wordIdx];
+  const cCount=Math.min(test.settings.cCount,test.words.length);
+  let choices=[word.meaning];
+  const pool=test.words.filter((_,i)=>i!==wordIdx).map(w=>w.meaning);
+  while(choices.length<cCount && pool.length){choices.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);}
+  for(let i=choices.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[choices[i],choices[j]]=[choices[j],choices[i]];}
+  const keyList=['c1','c2','c3','c4','c5','c6'];
+  $('#quizCard').innerHTML=`<h3 style="font-size:20px">${word.term}</h3><p class="small">意味を選んでください</p>`+
+    choices.map((c,i)=>`<button class="quiz-choice" data-c="${i}"><span class="kbd">${state.keys[keyList[i]]||''}</span>${c}</button>`).join('');
+  const answer=choices.indexOf(word.meaning);
+  let answered=false;
+  function pick(i){
+    if(answered)return; answered=true;
+    $$('.quiz-choice')[i].classList.add(i===answer?'correct':'wrong');
+    if(i===answer)test.progress.correct++; else test.progress.incorrect++;
+    if(i!==answer)$$('.quiz-choice')[answer].classList.add('correct');
+    test.progress.index++; save();
+    setTimeout(renderQuizQuestion,700);
+  }
+  $$('.quiz-choice').forEach((b,i)=>b.onclick=()=>pick(i));
+  currentQuiz.keyHandler && document.removeEventListener('keydown',currentQuiz.keyHandler,true);
+  currentQuiz.keyHandler=e=>{
+    const idx=keyList.indexOf(Object.keys(state.keys).find(k=>state.keys[k]===e.key && keyList.includes(k)));
+    if(idx>-1 && idx<choices.length) pick(idx);
+  };
+  document.addEventListener('keydown',currentQuiz.keyHandler,true);
+}
+$('#quizExitBtn').onclick=()=>{currentQuiz?.keyHandler && document.removeEventListener('keydown',currentQuiz.keyHandler,true);render();showView('home');};
+
+function render(){renderTemplates();renderHome();renderList();renderShop();renderKeyConfig();}
+render(); showView('home');
+</script>
+</body>
+</html>
